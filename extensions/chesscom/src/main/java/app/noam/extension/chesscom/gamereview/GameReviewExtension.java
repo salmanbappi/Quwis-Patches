@@ -129,13 +129,38 @@ public final class GameReviewExtension {
             Constructor<?> infoCtor = AppTypes.primaryCtor(moveInfoClass);
             if (infoCtor == null) return null;
 
-            Class<?> historyClass = Class.forName("com.chess.chessboard.history.i");
+            Class<?> historyClass = null;
+            try {
+                historyClass = Class.forName("com.chess.chessboard.history.i");
+            } catch (ClassNotFoundException ignored) {
+                if (positionAndMove != null) historyClass = positionAndMove.getClass();
+            }
+            if (historyClass == null && positionAndMove != null) {
+                historyClass = positionAndMove.getClass();
+            }
             Class<?> classificationClass = Class.forName("com.chess.compengine.AnalysisMoveClassification");
             Class<?> scoreClass = Class.forName("com.chess.entities.Score");
             Class<?> colorClass = Class.forName("com.chess.entities.Color");
 
-            Object position = historyClass.getMethod("e").invoke(positionAndMove);
-            Object side = position.getClass().getMethod("getSideToMove").invoke(position);
+            Object position = null;
+            if (positionAndMove != null) {
+                try {
+                    position = positionAndMove.getClass().getMethod("e").invoke(positionAndMove);
+                } catch (Throwable ignored) {
+                    position = getPositionFromPositionAndMove(positionAndMove);
+                }
+            }
+            Object side = null;
+            if (position != null) {
+                try {
+                    side = position.getClass().getMethod("getSideToMove").invoke(position);
+                } catch (Throwable ignored) {}
+            }
+            if (side == null) {
+                try {
+                    side = colorClass.getField("WHITE").get(null);
+                } catch (Throwable ignored) {}
+            }
             Object companion = scoreClass.getField("Companion").get(null);
             Object score = companion.getClass()
                 .getMethod("from", float.class, Integer.class, colorClass)
@@ -149,8 +174,10 @@ public final class GameReviewExtension {
             Object[] args = new Object[p.length];
             boolean historyUsed = false;
             for (int i = 0; i < p.length; i++) {
-                if (p[i] == historyClass && !historyUsed) { args[i] = positionAndMove; historyUsed = true; }
-                else if (p[i] == classificationClass) args[i] = book;
+                if (historyClass != null && p[i].isAssignableFrom(historyClass) && !historyUsed) {
+                    args[i] = positionAndMove;
+                    historyUsed = true;
+                } else if (p[i] == classificationClass) args[i] = book;
                 else if (p[i] == scoreClass) args[i] = score;
                 else args[i] = AppTypes.defaultFor(p[i]);
             }

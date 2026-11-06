@@ -281,13 +281,13 @@ val gameReviewPatch = bytecodePatch(
         GameReviewV2V0JFingerprint.method.addInstructions(
             0,
             """
-                move-object/from16 v0, p0
-                move-object/from16 v1, p1
+                move-object/from16 v0, p1
+                move-object/from16 v1, p2
                 invoke-static { v0, v1 }, $EXTENSION_CLASS->shouldUseDummyMove(Ljava/lang/Object;Ljava/lang/Object;)Z
                 move-result v0
                 if-eqz v0, :proceed
                 const-class v0, Lcom/chess/gamereview/api/d;
-                move-object/from16 v1, p1
+                move-object/from16 v1, p2
                 invoke-static { v0, v1 }, $EXTENSION_CLASS->buildDummyMoveResult(Ljava/lang/Class;Ljava/lang/Object;)Ljava/lang/Object;
                 move-result-object v0
                 if-eqz v0, :proceed

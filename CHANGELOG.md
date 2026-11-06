@@ -1,3 +1,9 @@
+# [1.9.24](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.23...v1.9.24) (2026-11-06)
+
+### Bug Fixes
+
+* **Game Review (4.10.23):** fixed `NullPointerException` at `com.chess.gamereview.v2.j0.o` caused by off-by-one register passing in `GameReviewV2V0JFingerprint` bytecode instructions and hardened dummy move generation against renamed history reflection classes
+
 # [1.9.23](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.22...v1.9.23) (2026-11-06)
 
 ### Features
