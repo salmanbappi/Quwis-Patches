@@ -67,7 +67,7 @@ public final class FishnetSearch {
         Thread[] workers = new Thread[Math.max(1, Math.min(engines, chunks.size()))];
         for (int w = 0; w < workers.length; w++) {
             workers[w] = new Thread(() -> {
-                Engine engine = remote ? new NetEngine() : new Engine(THREADS, HASH_MB);
+                Engine engine = remote ? new NetEngine() : new ApiEngine();
                 running.add(engine);
                 try {
                     if (!engine.start(context)) return;

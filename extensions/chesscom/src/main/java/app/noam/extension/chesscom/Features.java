@@ -109,7 +109,7 @@ public final class Features {
                 + "without increment.",
             null, Features::shortTimeControlsPatched),
         new Feature(STOCKFISH, "Games", "glyph_device_chip", "Stockfish analysis",
-            "Stockfish 19 on your phone, offline: best-move arrows on finished games, the analysis boards, "
+            "Fast cloud Stockfish AI: best-move arrows on finished games, the analysis boards, "
                 + "the game explorer and Game Review (in a Lichess review, on the moves Lichess didn't mark), "
                 + "and an eval bar where chess.com has none of its own. Never during a game or in puzzles.",
             PAGE_STOCKFISH, Features::stockfishPatched),

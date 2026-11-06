@@ -64,7 +64,7 @@ public final class Analysis {
         thread.setPriority(Thread.MIN_PRIORITY);
         return thread;
     });
-    private static final Engine ENGINE = new Engine();
+    private static final Engine ENGINE = new ApiEngine();
     private static final Runnable IDLE = () -> WORKER.execute(ENGINE::quit);
 
     /** The position the board shows now; older searches stop and their results are dropped. */

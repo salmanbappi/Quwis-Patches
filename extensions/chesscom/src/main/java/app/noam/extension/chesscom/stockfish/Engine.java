@@ -80,6 +80,7 @@ public class Engine {
     private BufferedReader stdout;
     private volatile boolean ready;
     private int multiPv = -1;
+    private ApiEngine apiFallback;
     /** Threads, and hash in MB; 0 sizes them for the phone. */
     private final int threads, hash;
 
@@ -96,8 +97,10 @@ public class Engine {
     public boolean start(Context context) {
         File binary = new File(context.getApplicationInfo().nativeLibraryDir, "libstockfish.so");
         if (!binary.canExecute()) {
-            Utils.log("Stockfish is not in " + binary.getParent());
-            return false;
+            Utils.log("Native Stockfish binary not found, using Stockfish API");
+            apiFallback = new ApiEngine();
+            ready = true;
+            return true;
         }
         try {
             ProcessBuilder builder = new ProcessBuilder(binary.getAbsolutePath());
@@ -138,6 +141,7 @@ public class Engine {
     }
 
     public boolean ready() {
+        if (apiFallback != null) return true;
         if (!ready) return false;
         if (!alive()) {
             ready = false;
@@ -159,6 +163,7 @@ public class Engine {
     }
 
     public Result analyse(String fen, int depth, int lines, Progress progress) {
+        if (apiFallback != null) return apiFallback.analyse(fen, depth, lines, progress);
         return search("position fen " + fen, !fen.contains(" b "), depth, 0, lines, progress);
     }
 
@@ -169,6 +174,7 @@ public class Engine {
      */
     public Result analyseGame(String startFen, List<String> history, String positionFen, int depth, long nodes,
                               int lines) {
+        if (apiFallback != null) return apiFallback.analyseGame(startFen, history, positionFen, depth, nodes, lines);
         String position = history != null && !history.isEmpty()
             ? "position fen " + startFen + " moves " + String.join(" ", history)
             : "position fen " + positionFen;
@@ -177,6 +183,10 @@ public class Engine {
 
     /** Clears the transposition table between reviewed games. */
     public void newGame() {
+        if (apiFallback != null) {
+            apiFallback.newGame();
+            return;
+        }
         send("ucinewgame");
     }
 
@@ -202,10 +212,18 @@ public class Engine {
 
     /** Ends the running search early; its best result so far is still returned. */
     public void stopSearch() {
+        if (apiFallback != null) {
+            apiFallback.stopSearch();
+            return;
+        }
         send("stop");
     }
 
     public void quit() {
+        if (apiFallback != null) {
+            apiFallback.quit();
+            apiFallback = null;
+        }
         ready = false;
         try {
             send("quit");
@@ -343,7 +361,7 @@ public class Engine {
         return new Result(list, scores[0], mate, depth, finished, pv, scores.clone());
     }
 
-    private static Result empty() {
+    protected static Result empty() {
         return new Result(new ArrayList<>(), 0f, 0, 0, false, new ArrayList<>(), new float[0]);
     }
 

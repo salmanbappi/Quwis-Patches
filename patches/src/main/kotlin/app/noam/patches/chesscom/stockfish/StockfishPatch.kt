@@ -415,15 +415,14 @@ private class Tar(private val input: InputStream) {
 @Suppress("unused")
 val stockfishPatch = bytecodePatch(
     name = "Stockfish analysis",
-    description = "Stockfish 19 on your phone, offline (arm64): best-move arrows on finished games, the " +
-        "analysis boards, the game explorer and Game Review (in a Lichess review, on the moves Lichess " +
-        "didn't mark), and an eval bar where chess.com has none of its own. It never shows while a game " +
-        "is being played or in puzzles. Patching downloads the official Stockfish 19 (80 MB) from " +
-        "Stockfish's GitHub, so it needs internet.",
+    description = "Stockfish AI: best-move arrows on finished games, the analysis boards, " +
+        "the game explorer and Game Review (in a Lichess review, on the moves Lichess didn't mark), " +
+        "and an eval bar where chess.com has none of its own. It never shows while a game is being " +
+        "played or in puzzles. Powered by fast cloud Stockfish API.",
 ) {
     compatibleWith(Constants.COMPATIBILITY)
 
-    dependsOn(settingsPatch, stockfishResourcePatch)
+    dependsOn(settingsPatch)
 
     execute {
         markFeaturePatched("stockfishPatched")
