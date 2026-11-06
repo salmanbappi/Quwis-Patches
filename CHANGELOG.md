@@ -1,3 +1,12 @@
+# [1.9.23](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.22...v1.9.23) (2026-11-06)
+
+### Features
+
+* **Cloud Stockfish Engine:** integrated high-speed Stockfish REST APIs (`chess-api.com` & `stockfish.online`) for sub-second evaluations without phone CPU heating or battery drain
+* **In-game Move Suggestions:** real-time best-move arrows are now active during live games, bot matches, daily games, and puzzles
+* **Zero 80 MB Download:** eliminated the heavy `stockfish-android-arm64-universal.tar.gz` download at patch time
+* **Unblocked Game Review:** removed fair-play check aborting post-game reviews and cleaned suggestion arrows off the Game Review screen
+
 # [1.9.22](https://github.com/quwi26/Quwis-Patches/compare/v1.9.21...v1.9.22) (2026-11-04)
 
 ### Bug Fixes
