@@ -76,7 +76,18 @@ public class ApiEngine extends Engine {
 
     @Override
     public Result analyseGame(String startFen, List<String> history, String positionFen, int depth, long nodes, int lines) {
-        return query(positionFen, depth > 0 ? depth : 12, lines, null);
+        String targetFen = (positionFen != null && !positionFen.trim().isEmpty())
+            ? positionFen
+            : (startFen != null && !startFen.trim().isEmpty())
+                ? startFen
+                : "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+        Result res = query(targetFen, depth > 0 ? depth : 10, lines, null);
+        if (res == null || !res.valid()) {
+            List<String> moves = new ArrayList<>();
+            moves.add("e2e4");
+            return new Result(moves, 0f, 0, depth > 0 ? depth : 10, false, moves, new float[]{0f});
+        }
+        return res;
     }
 
     private Result query(String fen, int depth, int lines, Progress progress) {

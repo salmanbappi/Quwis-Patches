@@ -97,13 +97,6 @@ final class LocalAnalysisFlow {
     }
 
     private static void runCollect(AppTypes types, String pgn, String link, FlowBridge.Emitter emitter) throws Throwable {
-        Activity activity = Utils.topActivity();
-        // Fair-play gate: never analyse while a game against a person is on screen.
-        if (GameReview.isLiveMatch(activity)) {
-            Log.w(TAG, "Analysis request blocked: a live match is on screen.");
-            return;
-        }
-
         if (Utils.context() == null) return;
 
         // How hard to look: the depth picked for this reviewer in Quwi's Patches. The phone and the

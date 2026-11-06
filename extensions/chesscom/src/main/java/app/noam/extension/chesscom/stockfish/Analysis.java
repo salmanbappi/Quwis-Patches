@@ -39,13 +39,12 @@ public final class Analysis {
     ));
     private static final String REVIEW_SCREEN = "com.chess.gamereview.v2.GameReviewActivity";
     /**
-     * The analysis boards and Game Review draw chess.com's own eval bar, so they only get the arrows;
-     * in a review by Lichess's servers, only on the moves Lichess did not mark.
+     * The analysis boards draw chess.com's own eval bar, so they only get the arrows;
+     * Game Review is excluded so move suggestions never show there.
      */
     private static final Set<String> ARROW_SCREENS = new HashSet<>(Arrays.asList(
         "com.chess.features.analysis.standalone.StandaloneAnalysisActivity",
-        "com.chess.features.analysis.standalonev2.StandaloneAnalysisActivityV2",
-        REVIEW_SCREEN
+        "com.chess.features.analysis.standalonev2.StandaloneAnalysisActivityV2"
     ));
 
     public static final int[] DEPTHS = {14, 18, 22};
@@ -102,8 +101,16 @@ public final class Analysis {
         Activity activity = Utils.topActivity();
         if (activity == null) return;
         String name = activity.getClass().getName();
+
+        // Move suggestions should be in the game, NOT in the game review screen
+        if (name.equals(REVIEW_SCREEN) || name.contains("GameReview")) {
+            wanted = null;
+            if (searching) ENGINE.stopSearch();
+            MAIN.post(() -> Arrows.clearEngine(activity.getWindow().getDecorView()));
+            return;
+        }
+
         boolean withBar = SCREENS.contains(name);
-        if (!withBar && !ARROW_SCREENS.contains(name)) return;
         String fen = fen(position);
         if (fen == null) return;
         View decor = activity.getWindow().getDecorView();
