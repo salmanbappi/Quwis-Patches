@@ -597,9 +597,9 @@ public final class MorpheSettingsActivity extends Activity {
                 + "allows 40 analyses a day."));
     }
 
-    /** How hard Local Stockfish looks: each depth is a budget Lichess's own servers use. */
+    /** How hard Stockfish API looks: each depth is a budget Lichess's own servers use. */
     private void reviewDepthChoice() {
-        list.addView(header("Local Stockfish depth"));
+        list.addView(header("Stockfish API depth"));
         int depth = GameReview.reviewDepthIndex();
         list.addView(segments(GameReview.REVIEW_DEPTH_NAMES, depth, GameReview::setReviewDepthIndex), cardParams());
         String[] meaning = {
@@ -609,7 +609,7 @@ public final class MorpheSettingsActivity extends Activity {
                 + "match Analyze with Lichess. About three times as long as Standard.",
             "5,000,000 positions a move, the most. About five times as long as Deep.",
         };
-        list.addView(caption(meaning[depth] + " Local Stockfish works offline on this phone. It judges moves "
+        list.addView(caption(meaning[depth] + " Powered by high-speed cloud Stockfish API with zero phone lag. It judges moves "
             + "the Lichess way and marks the rest Best, Excellent or Good, as chess.com does."));
     }
 

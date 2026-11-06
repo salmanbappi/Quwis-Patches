@@ -36,7 +36,7 @@ public final class ReviewChooser {
     private static String title(GameReview.Mode mode) {
         switch (mode) {
             case CHESSCOM: return "Review on chess.com";
-            case STOCKFISH: return "Local Stockfish";
+            case STOCKFISH: return "Stockfish AI (Cloud API)";
             case LAPTOP: return "Stockfish on your computer";
             default: return "Analyze with Lichess";
         }
