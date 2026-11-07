@@ -169,6 +169,15 @@ public final class GameReviewExtension {
             for (Object c : classificationClass.getEnumConstants()) {
                 if ("BOOK".equals(((Enum<?>) c).name())) { book = c; break; }
             }
+            if (book == null) {
+                try {
+                    Field fb = classificationClass.getField("b");
+                    book = fb.get(null);
+                } catch (Throwable ignored) {
+                    Object[] constants = classificationClass.getEnumConstants();
+                    if (constants != null && constants.length > 0) book = constants[0];
+                }
+            }
 
             Class<?>[] p = infoCtor.getParameterTypes();
             Object[] args = new Object[p.length];
@@ -194,10 +203,16 @@ public final class GameReviewExtension {
     }
 
     private static Object getPlayedMove(Object positionObj) {
+        if (positionObj == null) return null;
         try {
-            Class<?> pmClass = positionObj.getClass().getClassLoader().loadClass(positionObj.getClass().getName() + "$PlayedMove");
+            try {
+                Field fb = positionObj.getClass().getField("b");
+                Object val = fb.get(positionObj);
+                if (val != null) return val;
+            } catch (Throwable ignored) {}
+
             for (Field f : positionObj.getClass().getDeclaredFields()) {
-                if (f.getType().equals(pmClass)) {
+                if (f.getType().getName().contains("PlayedMove")) {
                     f.setAccessible(true);
                     return f.get(positionObj);
                 }
@@ -209,10 +224,16 @@ public final class GameReviewExtension {
     }
 
     private static Object getSuggestedMove(Object positionObj) {
+        if (positionObj == null) return null;
         try {
-            Class<?> smClass = positionObj.getClass().getClassLoader().loadClass(positionObj.getClass().getName() + "$SuggestedMove");
+            try {
+                Field fc = positionObj.getClass().getField("c");
+                Object val = fc.get(positionObj);
+                if (val != null) return val;
+            } catch (Throwable ignored) {}
+
             for (Field f : positionObj.getClass().getDeclaredFields()) {
-                if (f.getType().equals(smClass)) {
+                if (f.getType().getName().contains("SuggestedMove")) {
                     f.setAccessible(true);
                     return f.get(positionObj);
                 }
@@ -224,6 +245,7 @@ public final class GameReviewExtension {
     }
 
     private static String getSuggestedMoveString(Object suggestedMoveObj) {
+        if (suggestedMoveObj == null) return null;
         try {
             for (Field f : suggestedMoveObj.getClass().getDeclaredFields()) {
                 if (f.getType().equals(String.class)) {
@@ -240,13 +262,16 @@ public final class GameReviewExtension {
     private static Object getPositionFromPositionAndMove(Object pmObj) {
         if (pmObj == null) return null;
         try {
-            Class<?> dClass = Class.forName("com.chess.chessboard.variants.d");
             for (Field f : pmObj.getClass().getDeclaredFields()) {
-                if (dClass.isAssignableFrom(f.getType())) {
+                if (f.getType().getName().contains("chessboard.variants")) {
                     f.setAccessible(true);
-                    return f.get(pmObj);
+                    Object val = f.get(pmObj);
+                    if (val != null) return val;
                 }
             }
+            try {
+                return pmObj.getClass().getMethod("e").invoke(pmObj);
+            } catch (Throwable ignored) {}
         } catch (Throwable t) {
             Log.e(TAG, "Failed to get the position from PositionAndMove", t);
         }
@@ -254,14 +279,18 @@ public final class GameReviewExtension {
     }
 
     private static Object convertMove(Object position, String moveStr) {
+        if (position == null || moveStr == null) return null;
         try {
             Class<?> converterClass = Class.forName("com.chess.chessboard.compengine.MoveConverterKt");
-            Class<?> dClass = Class.forName("com.chess.chessboard.variants.d");
-            Method convertMethod = converterClass.getMethod("d", dClass, String.class, boolean.class);
-            return convertMethod.invoke(null, position, moveStr, true);
+            for (Method m : converterClass.getMethods()) {
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length == 3 && p[0].isAssignableFrom(position.getClass()) && p[1] == String.class && p[2] == boolean.class) {
+                    return m.invoke(null, position, moveStr, true);
+                }
+            }
         } catch (Throwable t) {
             Log.e(TAG, "Failed to convert move", t);
-            return null;
         }
+        return null;
     }
 }

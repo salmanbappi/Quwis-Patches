@@ -1,3 +1,9 @@
+# [1.9.25](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.24...v1.9.25) (2026-11-07)
+
+### Bug Fixes
+
+* **Game Review (4.10.23):** eliminate `NullPointerException` at `com.chess.gamereview.v2.j0.o` by aligning `AnalyzedGameData.positions` 1-to-1 with played history plies (avoiding prepended unplayed starting position with null `playedMove`), restore static register mapping (`p0, p1`), and support 4.10.23 obfuscated classification enums and `MoveConverterKt.b`
+
 # [1.9.24](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.23...v1.9.24) (2026-11-06)
 
 ### Bug Fixes

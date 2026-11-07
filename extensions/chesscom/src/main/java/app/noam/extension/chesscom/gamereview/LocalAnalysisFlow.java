@@ -412,30 +412,8 @@ final class LocalAnalysisFlow {
             int[] wT = new int[11];
             int[] bT = new int[11];
 
-            // Starting position (index 0)
-            Object startSuggestedMove = null;
-            Object startBestMove = null;
-            if (data.startBest != null) {
-                List<String> startPv = data.startLine.isEmpty() ? Collections.singletonList(data.startBest) : data.startLine;
-                Object[] startSmArgs = new Object[]{
-                    data.startScore,
-                    data.startMate != 0 ? data.startMate : null,
-                    data.startBest,
-                    evalValue(evalConstructor, evalIntFirst, startPv, pvCutoff(startPv)),
-                    new ArrayList<>(),
-                    null,
-                };
-                for (int k = 0; k < startSmArgs.length && k < smTypes.length; k++) {
-                    startSmArgs[k] = coerce(smTypes[k], startSmArgs[k]);
-                }
-                startSuggestedMove = smConstructor.newInstance(startSmArgs);
-                startBestMove = bmConstructor.newInstance(data.startBest);
-            }
-            positions.add(apConstructor.newInstance(
-                colorWhite, null, startSuggestedMove, startBestMove, null,
-                scConstructor.newInstance(false, false)
-            ));
-
+            // 4.10.23: History entries are strictly 1-to-1 with played plies. Prepending
+            // an unplayed position with a null playedMove shifts all plies by 1 and crashes j0.o.
             for (int i = 0; i < totalMoves; i++) {
                 ReviewData.Ply ply = data.plies[i];
                 String playedLan = playedLans[i];
