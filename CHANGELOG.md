@@ -1,3 +1,9 @@
+# [1.9.26](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.25...v1.9.26) (2026-11-07)
+
+### Performance & Bug Fixes
+
+* **Cloud Stockfish Engine:** fixed `INVALID_FEN_VALIDATION_ERROR` rejection on `chess-api.com` caused by en-passant target notation on double pawn moves, preventing slow fallback stalls and ensuring sub-second evaluation response times across all moves
+
 # [1.9.25](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.24...v1.9.25) (2026-11-07)
 
 ### Bug Fixes
