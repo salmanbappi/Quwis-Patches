@@ -1,3 +1,9 @@
+# [1.9.28](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.27...v1.9.28) (2026-11-07)
+
+### Bug Fixes
+
+* **Game Review (4.10.23):** eliminate `NullPointerException` at `GameReviewViewModel$4$stateMachine$1$12.invokeSuspend` (SourceFile:198) by setting starting position `playedMove` and `classification` to null (bypassing unplayable ply 0 move conversion), while populating all history parameters in `buildDummyMoveResult` and supplying safe non-null enum/constructor instances via `AppTypes.defaultFor` so `j0.o` handles position 0 seamlessly
+
 # [1.9.27](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.26...v1.9.27) (2026-11-07)
 
 ### Bug Fixes

@@ -62,9 +62,9 @@ This document serves as the persistent architectural reference for any current o
 - **Purpose**: Provides unlimited game reviews using Lichess-style evaluation formulas (accuracy, ACPL, and move marks).
 - **Starting Position & Plies Indexing (4.10.23)**:
   - In Chess.com Game Review (`GameReviewViewModel$4$stateMachine$1$12.invokeSuspend`), the review UI expects `positions` to have `totalMoves + 1` entries (index 0 for the starting board before move 1, followed by moves 1..totalMoves).
-  - If position 0 is omitted, the list only contains `totalMoves` elements (indices 0..54 for a 55-move game), and accessing the final move or game state (`list.get(55)`) crashes at line 720 with `IndexOutOfBoundsException: Index 55 out of bounds for length 55`.
-  - Position 0 MUST be present, but in 4.10.23 `j0.o` offset 0034 executes `Intrinsics.f(position.playedMove)`, throwing `NullPointerException` if `playedMove` is `null`.
-  - Therefore, position 0 is provided with a valid, non-null `PlayedMove` (depth 10, startScore, safe moveLan, eval, "BOOK").
+  - If position 0 is omitted, `positions` only has `totalMoves` elements (indices 0..54 for 55 moves), crashing at line 720 with `IndexOutOfBoundsException: Index 55 out of bounds for length 55`.
+  - Position 0 MUST have `playedMove = null` and `classification = null`. If `playedMove` is non-null, `invokeSuspend` attempts `MoveConverterKt.b` on ply 0 and throws `NullPointerException` at line 198.
+  - When `positions[0].playedMove == null`, `j0.o` is intercepted by `GameReviewV2V0JFingerprint`, which detects `playedMove == null` in `shouldUseDummyMove` and returns a dummy book item via `buildDummyMoveResult` (with all `history.f` parameters populated and safe defaults via `AppTypes.defaultFor`), bypassing line 679 NPE cleanly.
 - **Register Calling Convention in `GameReviewPatch.kt`**:
   - `GameReviewV2V0JFingerprint` targets `com.chess.gamereview.v2.j0.o`.
   - `j0.o` is a **`public static final`** method with 4 arguments:

@@ -191,14 +191,9 @@ public final class GameReviewExtension {
 
             Class<?>[] p = infoCtor.getParameterTypes();
             Object[] args = new Object[p.length];
-            boolean historyUsed = false;
             for (int i = 0; i < p.length; i++) {
-                if (positionAndMove != null && p[i].isInstance(positionAndMove) && !historyUsed) {
+                if (positionAndMove != null && (p[i].isInstance(positionAndMove) || (historyClass != null && p[i].isAssignableFrom(historyClass)))) {
                     args[i] = positionAndMove;
-                    historyUsed = true;
-                } else if (historyClass != null && p[i].isAssignableFrom(historyClass) && !historyUsed) {
-                    args[i] = positionAndMove;
-                    historyUsed = true;
                 } else if (p[i] == classificationClass) args[i] = book;
                 else if (p[i] == scoreClass) args[i] = score;
                 else args[i] = AppTypes.defaultFor(p[i]);
