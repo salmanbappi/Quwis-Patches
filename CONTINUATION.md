@@ -60,10 +60,11 @@ This document serves as the persistent architectural reference for any current o
 
 ### C. Game Review (`LocalAnalysisFlow.java` & `GameReviewPatch.kt`)
 - **Purpose**: Provides unlimited game reviews using Lichess-style evaluation formulas (accuracy, ACPL, and move marks).
-- **1-to-1 Plies Alignment (4.10.23)**:
-  - In Chess.com 4.10.23, `GameReviewViewModel` zips the game's played history (`history`, size $N$) directly with `AnalyzedGameData.positions`.
-  - **Do NOT prepend an unplayed starting position to `positions`** (ply 0). Doing so shifts all positions by 1, leaving move 1 paired with `playedMove == null`, which causes line 679 of `com.chess.gamereview.v2.j0.o` to crash with `NullPointerException`.
-  - `positions` must strictly contain the $N$ played positions.
+- **Starting Position & Plies Indexing (4.10.23)**:
+  - In Chess.com Game Review (`GameReviewViewModel$4$stateMachine$1$12.invokeSuspend`), the review UI expects `positions` to have `totalMoves + 1` entries (index 0 for the starting board before move 1, followed by moves 1..totalMoves).
+  - If position 0 is omitted, the list only contains `totalMoves` elements (indices 0..54 for a 55-move game), and accessing the final move or game state (`list.get(55)`) crashes at line 720 with `IndexOutOfBoundsException: Index 55 out of bounds for length 55`.
+  - Position 0 MUST be present, but in 4.10.23 `j0.o` offset 0034 executes `Intrinsics.f(position.playedMove)`, throwing `NullPointerException` if `playedMove` is `null`.
+  - Therefore, position 0 is provided with a valid, non-null `PlayedMove` (depth 10, startScore, safe moveLan, eval, "BOOK").
 - **Register Calling Convention in `GameReviewPatch.kt`**:
   - `GameReviewV2V0JFingerprint` targets `com.chess.gamereview.v2.j0.o`.
   - `j0.o` is a **`public static final`** method with 4 arguments:
@@ -73,10 +74,11 @@ This document serves as the persistent architectural reference for any current o
     - `p3` = `boolean`
   - Registers passed to `shouldUseDummyMove` and `buildDummyMoveResult` MUST be `p0` and `p1` (not `p1` and `p2`).
 - **4.10.23 Obfuscated Types**:
-  - `history.i` from older versions is `history.f` in 4.10.23.
+  - `history.i` from older versions is `history.f` in 4.10.23. `buildDummyMoveResult` dynamically matches `p[i].isInstance(positionAndMove)` to support any version.
   - `variants.d` is `variants.e` in 4.10.23.
   - Move converter method on `MoveConverterKt` is `b(variants.e, String, boolean)`.
-  - `AnalysisMoveClassification` enum constants are obfuscated as `b, c, d...` (not `BOOK`).
+  - `AnalysisMoveClassification` enum constants are obfuscated as `b, c, d...` (not `BOOK`). Fallbacks check `fb` field `b` or `constants[0]`.
+  - `Score.Companion.from` is invoked dynamically by method reflection.
 
 ---
 

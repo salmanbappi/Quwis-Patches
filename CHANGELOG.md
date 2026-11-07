@@ -1,3 +1,9 @@
+# [1.9.27](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.26...v1.9.27) (2026-11-07)
+
+### Bug Fixes
+
+* **Game Review (4.10.23):** eliminate `IndexOutOfBoundsException: Index 55 out of bounds for length 55` at `GameReviewViewModel$4$stateMachine$1$12.invokeSuspend` (SourceFile:720) by restoring position 0 (starting board) with a non-null valid `PlayedMove`, ensuring the review list retains all `totalMoves + 1` entries while preventing NPEs in `j0.o` and making history reflection dynamic across obfuscated classes
+
 # [1.9.26](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.25...v1.9.26) (2026-11-07)
 
 ### Performance & Bug Fixes

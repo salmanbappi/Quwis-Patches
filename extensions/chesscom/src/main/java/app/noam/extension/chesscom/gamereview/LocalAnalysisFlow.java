@@ -412,8 +412,54 @@ final class LocalAnalysisFlow {
             int[] wT = new int[11];
             int[] bT = new int[11];
 
-            // 4.10.23: History entries are strictly 1-to-1 with played plies. Prepending
-            // an unplayed position with a null playedMove shifts all plies by 1 and crashes j0.o.
+            Class<?>[] pmTypes = pmConstructor.getParameterTypes();
+
+            // Starting position (index 0): In official Chess.com game review, positions[0]
+            // represents the starting position before move 1. All move indices in GameReview
+            // (1..totalMoves) rely on positions having length totalMoves + 1.
+            // In 4.10.23, j0.o requires playedMove != null (offset 0034). We provide a valid
+            // starting PlayedMove (depth 10, startScore, safe moveLan, eval, "BOOK") so j0.o
+            // and the state machine can process position 0 without NPE or IndexOutOfBoundsException.
+            Object startSuggestedMove = null;
+            Object startBestMove = null;
+            List<String> startPv = (data.startBest != null && !data.startLine.isEmpty())
+                ? data.startLine
+                : (data.startBest != null ? Collections.singletonList(data.startBest) : Collections.singletonList("e2e4"));
+            if (data.startBest != null) {
+                Object[] startSmArgs = new Object[]{
+                    data.startScore,
+                    data.startMate != 0 ? data.startMate : null,
+                    data.startBest,
+                    evalValue(evalConstructor, evalIntFirst, startPv, pvCutoff(startPv)),
+                    new ArrayList<>(),
+                    null,
+                };
+                for (int k = 0; k < startSmArgs.length && k < smTypes.length; k++) {
+                    startSmArgs[k] = coerce(smTypes[k], startSmArgs[k]);
+                }
+                startSuggestedMove = smConstructor.newInstance(startSmArgs);
+                startBestMove = bmConstructor.newInstance(data.startBest);
+            }
+
+            Object[] startPmArgs = new Object[pmTypes.length];
+            for (int k = 0; k < startPmArgs.length; k++) startPmArgs[k] = AppTypes.defaultFor(pmTypes[k]);
+            startPmArgs[0] = "10";                                                // depth
+            startPmArgs[1] = data.startScore;                                     // score
+            startPmArgs[2] = null;                                                // mateIn
+            startPmArgs[3] = data.startBest != null ? data.startBest : "e2e4";    // moveLan
+            startPmArgs[4] = evalValue(evalConstructor, evalIntFirst, startPv, pvCutoff(startPv)); // eval
+            startPmArgs[5] = new ArrayList<>();                                   // speech
+            startPmArgs[6] = null;                                                // coachEmotion
+            for (int k = 0; k < startPmArgs.length && k < pmTypes.length; k++) {
+                startPmArgs[k] = coerce(pmTypes[k], startPmArgs[k]);
+            }
+            Object startPlayedMove = pmConstructor.newInstance(startPmArgs);
+
+            positions.add(apConstructor.newInstance(
+                colorWhite, startPlayedMove, startSuggestedMove, startBestMove, "BOOK",
+                scConstructor.newInstance(false, false)
+            ));
+
             for (int i = 0; i < totalMoves; i++) {
                 ReviewData.Ply ply = data.plies[i];
                 String playedLan = playedLans[i];
@@ -441,7 +487,6 @@ final class LocalAnalysisFlow {
                 pmArgs[4] = evalValue(evalConstructor, evalIntFirst, playedPv, pvCutoff(playedPv)); // eval
                 pmArgs[5] = new ArrayList<>();                                        // speech
                 pmArgs[6] = null;                                                     // coachEmotion
-                Class<?>[] pmTypes = pmConstructor.getParameterTypes();
                 for (int k = 0; k < pmArgs.length && k < pmTypes.length; k++) {
                     pmArgs[k] = coerce(pmTypes[k], pmArgs[k]);
                 }

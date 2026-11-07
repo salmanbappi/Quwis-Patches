@@ -159,12 +159,22 @@ public final class GameReviewExtension {
             if (side == null) {
                 try {
                     side = colorClass.getField("WHITE").get(null);
-                } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {
+                    Object[] constants = colorClass.getEnumConstants();
+                    if (constants != null && constants.length > 0) side = constants[0];
+                }
             }
             Object companion = scoreClass.getField("Companion").get(null);
-            Object score = companion.getClass()
-                .getMethod("from", float.class, Integer.class, colorClass)
-                .invoke(companion, 0f, null, side);
+            Method fromMethod = null;
+            for (Method m : companion.getClass().getMethods()) {
+                if ("from".equals(m.getName()) && m.getParameterCount() == 3) {
+                    fromMethod = m;
+                    break;
+                }
+            }
+            Object score = fromMethod != null
+                ? fromMethod.invoke(companion, 0f, null, side)
+                : null;
             Object book = null;
             for (Object c : classificationClass.getEnumConstants()) {
                 if ("BOOK".equals(((Enum<?>) c).name())) { book = c; break; }
@@ -183,7 +193,10 @@ public final class GameReviewExtension {
             Object[] args = new Object[p.length];
             boolean historyUsed = false;
             for (int i = 0; i < p.length; i++) {
-                if (historyClass != null && p[i].isAssignableFrom(historyClass) && !historyUsed) {
+                if (positionAndMove != null && p[i].isInstance(positionAndMove) && !historyUsed) {
+                    args[i] = positionAndMove;
+                    historyUsed = true;
+                } else if (historyClass != null && p[i].isAssignableFrom(historyClass) && !historyUsed) {
                     args[i] = positionAndMove;
                     historyUsed = true;
                 } else if (p[i] == classificationClass) args[i] = book;
