@@ -36,8 +36,11 @@ import app.noam.extension.chesscom.lichesspuzzle.San;
  * - Chess-API: chess-api.com/v1 (POST)
  * - Stockfish Online: stockfish.online/api/s/v2.php (GET)
  *
- * Supports Auto ping race (locks on fastest provider on first request or manual test),
- * with automatic fallback to secondary providers if the active provider fails.
+ * Implements standard Auto behaviors:
+ * - Happy Eyeballs parallel ping race on startup/manual retest
+ * - Circuit Breaker (quarantine degraded/rate-limited providers for 60s)
+ * - Rolling EWMA latency tracking based on real in-flight queries
+ * - Instant fallback to secondary engines on cache-miss or error
  */
 public class ApiEngine extends Engine {
     public static final String PROVIDER_AUTO = "AUTO";
@@ -59,8 +62,12 @@ public class ApiEngine extends Engine {
     private static final String LICHESS_API = "https://lichess.org/api/cloud-eval";
     private static final String TABLEBASE_API = "https://tablebase.lichess.ovh/standard";
     private static final int TIMEOUT_MS = 5000;
+    private static final long QUARANTINE_DURATION_MS = 60_000L;
+    private static final int MAX_CONSECUTIVE_FAILURES = 3;
 
     private static final Map<String, Long> pingTimes = new ConcurrentHashMap<>();
+    private static final Map<String, Integer> consecutiveFailures = new ConcurrentHashMap<>();
+    private static final Map<String, Long> quarantineUntil = new ConcurrentHashMap<>();
     private static volatile String autoWinnerProvider = null;
     private static final Object PING_LOCK = new Object();
 
@@ -116,17 +123,27 @@ public class ApiEngine extends Engine {
             }
             Long ping = pingTimes.get(winner);
             String name = getProviderDisplayName(winner);
-            return ping != null ? "Active: " + name + " (" + ping + "ms)" : "Active: " + name;
+            String status = ping != null ? "Active: " + name + " (" + ping + "ms)" : "Active: " + name;
+            if (isQuarantined(winner)) {
+                status += " (cooling down)";
+            }
+            return status;
         } else {
             Long ping = pingTimes.get(setting);
             String name = getProviderDisplayName(setting);
-            return ping != null ? name + " (" + ping + "ms)" : name;
+            String status = ping != null ? name + " (" + ping + "ms)" : name;
+            if (isQuarantined(setting)) {
+                status += " (cooling down)";
+            }
+            return status;
         }
     }
 
     public static void runPingRaceAsync(PingCallback callback) {
         new Thread(() -> {
             autoWinnerProvider = null;
+            consecutiveFailures.clear();
+            quarantineUntil.clear();
             String winner = runPingRace();
             String summary;
             if (winner != null) {
@@ -261,6 +278,48 @@ public class ApiEngine extends Engine {
         }
     }
 
+    private static void recordSuccess(String provider, long elapsedMs) {
+        consecutiveFailures.put(provider, 0);
+        quarantineUntil.remove(provider);
+        Long prev = pingTimes.get(provider);
+        if (prev != null && prev > 0) {
+            // Rolling EWMA: 70% history, 30% live query
+            pingTimes.put(provider, (long) (0.7 * prev + 0.3 * elapsedMs));
+        } else {
+            pingTimes.put(provider, elapsedMs);
+        }
+    }
+
+    private static void recordFailure(String provider) {
+        int count = consecutiveFailures.getOrDefault(provider, 0) + 1;
+        consecutiveFailures.put(provider, count);
+        if (count >= MAX_CONSECUTIVE_FAILURES) {
+            quarantineUntil.put(provider, System.currentTimeMillis() + QUARANTINE_DURATION_MS);
+            Utils.log("ApiEngine: Quarantined " + provider + " for 60s due to consecutive failures");
+
+            if (provider.equalsIgnoreCase(autoWinnerProvider)) {
+                for (String candidate : new String[]{PROVIDER_LICHESS, PROVIDER_CHESS_API, PROVIDER_STOCKFISH_ONLINE}) {
+                    if (!isQuarantined(candidate)) {
+                        autoWinnerProvider = candidate;
+                        Utils.log("ApiEngine: Shifted active auto provider to " + candidate);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean isQuarantined(String provider) {
+        Long until = quarantineUntil.get(provider);
+        if (until == null) return false;
+        if (System.currentTimeMillis() >= until) {
+            quarantineUntil.remove(provider);
+            consecutiveFailures.put(provider, 0);
+            return false;
+        }
+        return true;
+    }
+
     @Override
     public boolean start(Context context) {
         return true;
@@ -331,8 +390,11 @@ public class ApiEngine extends Engine {
 
         List<String> order = getProviderOrder();
         for (String p : order) {
+            long start = System.currentTimeMillis();
             Result res = querySingleProvider(p, fen, depth);
+            long elapsed = System.currentTimeMillis() - start;
             if (res != null && res.valid()) {
+                recordSuccess(p, elapsed);
                 if (progress != null) progress.onProgress(res);
                 return res;
             }
@@ -361,14 +423,27 @@ public class ApiEngine extends Engine {
             first = setting;
         }
 
-        List<String> ordered = new ArrayList<>();
-        ordered.add(first);
+        List<String> healthy = new ArrayList<>();
+        List<String> quarantined = new ArrayList<>();
+
+        if (isQuarantined(first)) {
+            quarantined.add(first);
+        } else {
+            healthy.add(first);
+        }
+
         for (String p : all) {
             if (!p.equalsIgnoreCase(first)) {
-                ordered.add(p);
+                if (isQuarantined(p)) {
+                    quarantined.add(p);
+                } else {
+                    healthy.add(p);
+                }
             }
         }
-        return ordered;
+
+        healthy.addAll(quarantined);
+        return healthy;
     }
 
     private Result querySingleProvider(String provider, String fen, int depth) {
@@ -521,8 +596,14 @@ public class ApiEngine extends Engine {
                         }
                     }
                 }
+            } else if (code == 404) {
+                // Cloud cache miss is normal/expected for non-cached positions, not an error
+                return null;
+            } else {
+                recordFailure(PROVIDER_LICHESS);
             }
         } catch (Throwable t) {
+            recordFailure(PROVIDER_LICHESS);
             Utils.logError("Lichess Cloud query error: " + t.getMessage(), t);
         } finally {
             if (conn != null) conn.disconnect();
@@ -590,8 +671,11 @@ public class ApiEngine extends Engine {
                         return new Result(moves, score, mate, reportedDepth, false, pv, new float[]{score});
                     }
                 }
+            } else {
+                recordFailure(PROVIDER_CHESS_API);
             }
         } catch (Throwable t) {
+            recordFailure(PROVIDER_CHESS_API);
             Utils.logError("Chess-API query error: " + t.getMessage(), t);
         } finally {
             if (conn != null) conn.disconnect();
@@ -649,8 +733,11 @@ public class ApiEngine extends Engine {
                         return new Result(moves, score, mate, depth, false, pv, new float[]{score});
                     }
                 }
+            } else {
+                recordFailure(PROVIDER_STOCKFISH_ONLINE);
             }
         } catch (Throwable t) {
+            recordFailure(PROVIDER_STOCKFISH_ONLINE);
             Utils.logError("Stockfish.online query error: " + t.getMessage(), t);
         } finally {
             if (conn != null) conn.disconnect();
