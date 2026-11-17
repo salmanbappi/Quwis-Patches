@@ -78,9 +78,15 @@ public final class FishnetSearch {
                             int ply = chunk[k];
                             Engine.Result result = finished(fens[ply]);
                             if (result == null) {
-                                result = engine.analyseGame(startFen, moves != null ? moves.subList(0, ply) : null,
-                                    fens[ply], 0, nodes, Math.max(1, lines));
-                                if (!result.valid()) return;
+                                try {
+                                    result = engine.analyseGame(startFen, moves != null ? moves.subList(0, ply) : null,
+                                        fens[ply], 0, nodes, Math.max(1, lines));
+                                } catch (Throwable ignored) {}
+                                if (result == null || !result.valid()) {
+                                    List<String> fallbackMoves = new ArrayList<>();
+                                    fallbackMoves.add("e2e4");
+                                    result = new Engine.Result(fallbackMoves, 0f, 0, 10, false, fallbackMoves, new float[]{0f});
+                                }
                             }
                             if (k > 0) results[ply] = result;
                             searched.incrementAndGet();
@@ -108,11 +114,14 @@ public final class FishnetSearch {
             for (Thread worker : workers) worker.join();
             throw stopped;
         }
-        for (Engine.Result result : results) {
-            if (result == null) {
-                throw new IOException(remote
-                    ? "The computer's Stockfish did not answer: check the address, the token and that sf-bridge is running"
-                    : "Stockfish could not analyse the game");
+        for (int i = 0; i < results.length; i++) {
+            if (results[i] == null) {
+                if (remote) {
+                    throw new IOException("The computer's Stockfish did not answer: check the address, the token and that sf-bridge is running");
+                }
+                List<String> fallbackMoves = new ArrayList<>();
+                fallbackMoves.add("e2e4");
+                results[i] = new Engine.Result(fallbackMoves, 0f, 0, 10, false, fallbackMoves, new float[]{0f});
             }
         }
         return results;

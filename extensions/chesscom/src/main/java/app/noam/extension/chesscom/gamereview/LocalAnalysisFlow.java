@@ -314,11 +314,12 @@ final class LocalAnalysisFlow {
                             emitter.ensureActive();
                             emitter.emit(ipConstructor.newInstance(fraction, progressDepth, sourceEnum));
                         });
-                    } catch (IOException e) {
-                        Utils.toast(e.getMessage());
-                        throw e;
+                    } catch (Throwable e) {
+                        Log.w(TAG, "Lichess server review failed, falling back to engine review: " + e.getMessage());
+                        data = null;
                     }
-                } else {
+                }
+                if (data == null) {
                     try {
                         data = engineReview(startingFen, fens, playedLans, boards, historyUsable ? engineMoves : null,
                             searchNodes, remote, lichess, progress -> {

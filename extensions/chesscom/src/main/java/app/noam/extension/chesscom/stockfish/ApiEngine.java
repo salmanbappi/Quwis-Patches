@@ -31,16 +31,16 @@ import app.noam.extension.chesscom.lichesspuzzle.San;
 
 /**
  * Cloud-backed Stockfish engine calling high-speed REST APIs:
- * - Lichess Cloud Eval: lichess.org/api/cloud-eval (GET)
  * - Syzygy Tablebase: tablebase.lichess.ovh/standard (GET)
+ * - Lichess Cloud Eval: lichess.org/api/cloud-eval (GET)
  * - Chess-API: chess-api.com/v1 (POST)
  * - Stockfish Online: stockfish.online/api/s/v2.php (GET)
  *
- * Implements standard Auto behaviors:
- * - Happy Eyeballs parallel ping race on startup/manual retest
- * - Circuit Breaker (quarantine degraded/rate-limited providers for 60s)
+ * Implements resilient Auto behaviors:
+ * - Parallel ping race on startup/manual retest between on-demand engines
+ * - Opportunistic fast cache lookups (Tablebase <= 7 pieces, Lichess Cloud depth 30-75)
  * - Rolling EWMA latency tracking based on real in-flight queries
- * - Instant fallback to secondary engines on cache-miss or error
+ * - Instant failover between on-demand engines with zero lockout quarantine
  */
 public class ApiEngine extends Engine {
     public static final String PROVIDER_AUTO = "AUTO";
@@ -61,13 +61,11 @@ public class ApiEngine extends Engine {
     private static final String BACKUP_API = "https://stockfish.online/api/s/v2.php";
     private static final String LICHESS_API = "https://lichess.org/api/cloud-eval";
     private static final String TABLEBASE_API = "https://tablebase.lichess.ovh/standard";
-    private static final int TIMEOUT_MS = 5000;
-    private static final long QUARANTINE_DURATION_MS = 60_000L;
-    private static final int MAX_CONSECUTIVE_FAILURES = 3;
+
+    private static final int CONNECT_TIMEOUT_MS = 8000;
+    private static final int READ_TIMEOUT_MS = 12000;
 
     private static final Map<String, Long> pingTimes = new ConcurrentHashMap<>();
-    private static final Map<String, Integer> consecutiveFailures = new ConcurrentHashMap<>();
-    private static final Map<String, Long> quarantineUntil = new ConcurrentHashMap<>();
     private static volatile String autoWinnerProvider = null;
     private static final Object PING_LOCK = new Object();
 
@@ -123,27 +121,17 @@ public class ApiEngine extends Engine {
             }
             Long ping = pingTimes.get(winner);
             String name = getProviderDisplayName(winner);
-            String status = ping != null ? "Active: " + name + " (" + ping + "ms)" : "Active: " + name;
-            if (isQuarantined(winner)) {
-                status += " (cooling down)";
-            }
-            return status;
+            return ping != null ? "Active: " + name + " (" + ping + "ms)" : "Active: " + name;
         } else {
             Long ping = pingTimes.get(setting);
             String name = getProviderDisplayName(setting);
-            String status = ping != null ? name + " (" + ping + "ms)" : name;
-            if (isQuarantined(setting)) {
-                status += " (cooling down)";
-            }
-            return status;
+            return ping != null ? name + " (" + ping + "ms)" : name;
         }
     }
 
     public static void runPingRaceAsync(PingCallback callback) {
         new Thread(() -> {
             autoWinnerProvider = null;
-            consecutiveFailures.clear();
-            quarantineUntil.clear();
             String winner = runPingRace();
             String summary;
             if (winner != null) {
@@ -160,10 +148,14 @@ public class ApiEngine extends Engine {
 
     public static String runPingRace() {
         synchronized (PING_LOCK) {
-            String[] testProviders = {PROVIDER_LICHESS, PROVIDER_CHESS_API, PROVIDER_STOCKFISH_ONLINE};
-            CountDownLatch firstResponderLatch = new CountDownLatch(1);
+            if (autoWinnerProvider != null) {
+                return autoWinnerProvider;
+            }
+
+            String[] testProviders = {PROVIDER_CHESS_API, PROVIDER_STOCKFISH_ONLINE, PROVIDER_LICHESS};
+            CountDownLatch firstEngineLatch = new CountDownLatch(1);
             CountDownLatch allDoneLatch = new CountDownLatch(testProviders.length);
-            final String[] fastest = new String[1];
+            final String[] fastestEngine = new String[1];
 
             ExecutorService pool = Executors.newFixedThreadPool(testProviders.length);
             for (String provider : testProviders) {
@@ -174,10 +166,13 @@ public class ApiEngine extends Engine {
                         long elapsed = System.currentTimeMillis() - start;
                         if (ok) {
                             pingTimes.put(provider, elapsed);
-                            synchronized (fastest) {
-                                if (fastest[0] == null) {
-                                    fastest[0] = provider;
-                                    firstResponderLatch.countDown();
+                            // Only calculation engines qualify for autoWinner
+                            if (!PROVIDER_LICHESS.equalsIgnoreCase(provider)) {
+                                synchronized (fastestEngine) {
+                                    if (fastestEngine[0] == null) {
+                                        fastestEngine[0] = provider;
+                                        firstEngineLatch.countDown();
+                                    }
                                 }
                             }
                         }
@@ -191,18 +186,18 @@ public class ApiEngine extends Engine {
             pool.shutdown();
 
             try {
-                firstResponderLatch.await(3000, TimeUnit.MILLISECONDS);
+                firstEngineLatch.await(3000, TimeUnit.MILLISECONDS);
             } catch (InterruptedException ignored) {}
 
-            if (fastest[0] != null) {
-                autoWinnerProvider = fastest[0];
+            if (fastestEngine[0] != null) {
+                autoWinnerProvider = fastestEngine[0];
             } else if (autoWinnerProvider == null) {
                 autoWinnerProvider = PROVIDER_CHESS_API;
             }
 
             new Thread(() -> {
                 try {
-                    allDoneLatch.await(2000, TimeUnit.MILLISECONDS);
+                    allDoneLatch.await(3000, TimeUnit.MILLISECONDS);
                 } catch (InterruptedException ignored) {}
             }).start();
 
@@ -224,8 +219,8 @@ public class ApiEngine extends Engine {
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(READ_TIMEOUT_MS);
             return conn.getResponseCode() == HttpURLConnection.HTTP_OK;
         } catch (Throwable t) {
             return false;
@@ -242,12 +237,13 @@ public class ApiEngine extends Engine {
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(READ_TIMEOUT_MS);
             conn.setDoOutput(true);
             JSONObject body = new JSONObject();
             body.put("fen", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-            body.put("depth", 10);
+            body.put("depth", 8);
+
             byte[] b = body.toString().getBytes(StandardCharsets.UTF_8);
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(b);
@@ -268,8 +264,8 @@ public class ApiEngine extends Engine {
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(READ_TIMEOUT_MS);
             return conn.getResponseCode() == HttpURLConnection.HTTP_OK;
         } catch (Throwable t) {
             return false;
@@ -279,8 +275,6 @@ public class ApiEngine extends Engine {
     }
 
     private static void recordSuccess(String provider, long elapsedMs) {
-        consecutiveFailures.put(provider, 0);
-        quarantineUntil.remove(provider);
         Long prev = pingTimes.get(provider);
         if (prev != null && prev > 0) {
             // Rolling EWMA: 70% history, 30% live query
@@ -288,36 +282,6 @@ public class ApiEngine extends Engine {
         } else {
             pingTimes.put(provider, elapsedMs);
         }
-    }
-
-    private static void recordFailure(String provider) {
-        int count = consecutiveFailures.getOrDefault(provider, 0) + 1;
-        consecutiveFailures.put(provider, count);
-        if (count >= MAX_CONSECUTIVE_FAILURES) {
-            quarantineUntil.put(provider, System.currentTimeMillis() + QUARANTINE_DURATION_MS);
-            Utils.log("ApiEngine: Quarantined " + provider + " for 60s due to consecutive failures");
-
-            if (provider.equalsIgnoreCase(autoWinnerProvider)) {
-                for (String candidate : new String[]{PROVIDER_LICHESS, PROVIDER_CHESS_API, PROVIDER_STOCKFISH_ONLINE}) {
-                    if (!isQuarantined(candidate)) {
-                        autoWinnerProvider = candidate;
-                        Utils.log("ApiEngine: Shifted active auto provider to " + candidate);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    private static boolean isQuarantined(String provider) {
-        Long until = quarantineUntil.get(provider);
-        if (until == null) return false;
-        if (System.currentTimeMillis() >= until) {
-            quarantineUntil.remove(provider);
-            consecutiveFailures.put(provider, 0);
-            return false;
-        }
-        return true;
     }
 
     @Override
@@ -374,12 +338,14 @@ public class ApiEngine extends Engine {
     private Result query(String fen, int depth, int lines, Progress progress) {
         if (fen == null || fen.trim().isEmpty()) return empty();
 
+        // 1. Terminal game state (mate, stalemate, insufficient material)
         Result finished = checkFinished(fen);
         if (finished != null) {
             if (progress != null) progress.onProgress(finished);
             return finished;
         }
 
+        // 2. Endgame Tablebase (Syzygy, <= 7 pieces)
         if (countPieces(fen) <= 7) {
             Result tb = queryLichessTablebase(fen);
             if (tb != null && tb.valid()) {
@@ -388,10 +354,18 @@ public class ApiEngine extends Engine {
             }
         }
 
+        // 3. Opportunistic Lichess Cloud Eval check (instant depth 30-75 if cached)
+        Result cloud = queryLichessCloud(fen);
+        if (cloud != null && cloud.valid()) {
+            if (progress != null) progress.onProgress(cloud);
+            return cloud;
+        }
+
+        // 4. On-demand Cloud Engines with instant fallback
         List<String> order = getProviderOrder();
         for (String p : order) {
             long start = System.currentTimeMillis();
-            Result res = querySingleProvider(p, fen, depth);
+            Result res = queryEngineProvider(p, fen, depth);
             long elapsed = System.currentTimeMillis() - start;
             if (res != null && res.valid()) {
                 recordSuccess(p, elapsed);
@@ -404,57 +378,38 @@ public class ApiEngine extends Engine {
     }
 
     private List<String> getProviderOrder() {
-        boolean lichessMode = GameReview.lichessReview();
         String setting = getProvider();
-        List<String> all = new ArrayList<>();
-        all.add(PROVIDER_LICHESS);
-        all.add(PROVIDER_CHESS_API);
-        all.add(PROVIDER_STOCKFISH_ONLINE);
+        List<String> order = new ArrayList<>();
 
-        String first;
-        if (lichessMode) {
-            first = PROVIDER_LICHESS;
-        } else if (PROVIDER_AUTO.equalsIgnoreCase(setting)) {
-            if (autoWinnerProvider == null) {
-                runPingRace();
+        if (PROVIDER_STOCKFISH_ONLINE.equalsIgnoreCase(setting)) {
+            order.add(PROVIDER_STOCKFISH_ONLINE);
+            order.add(PROVIDER_CHESS_API);
+        } else if (PROVIDER_CHESS_API.equalsIgnoreCase(setting)) {
+            order.add(PROVIDER_CHESS_API);
+            order.add(PROVIDER_STOCKFISH_ONLINE);
+        } else {
+            // AUTO or LICHESS
+            String winner = autoWinnerProvider;
+            if (winner == null) {
+                winner = PROVIDER_CHESS_API;
             }
-            first = autoWinnerProvider != null ? autoWinnerProvider : PROVIDER_CHESS_API;
-        } else {
-            first = setting;
-        }
-
-        List<String> healthy = new ArrayList<>();
-        List<String> quarantined = new ArrayList<>();
-
-        if (isQuarantined(first)) {
-            quarantined.add(first);
-        } else {
-            healthy.add(first);
-        }
-
-        for (String p : all) {
-            if (!p.equalsIgnoreCase(first)) {
-                if (isQuarantined(p)) {
-                    quarantined.add(p);
-                } else {
-                    healthy.add(p);
-                }
+            if (PROVIDER_STOCKFISH_ONLINE.equalsIgnoreCase(winner)) {
+                order.add(PROVIDER_STOCKFISH_ONLINE);
+                order.add(PROVIDER_CHESS_API);
+            } else {
+                order.add(PROVIDER_CHESS_API);
+                order.add(PROVIDER_STOCKFISH_ONLINE);
             }
         }
-
-        healthy.addAll(quarantined);
-        return healthy;
+        return order;
     }
 
-    private Result querySingleProvider(String provider, String fen, int depth) {
-        if (PROVIDER_LICHESS.equalsIgnoreCase(provider)) {
-            return queryLichessCloud(fen);
-        } else if (PROVIDER_CHESS_API.equalsIgnoreCase(provider)) {
-            return queryChessApi(fen, depth);
-        } else if (PROVIDER_STOCKFISH_ONLINE.equalsIgnoreCase(provider)) {
+    private Result queryEngineProvider(String provider, String fen, int depth) {
+        if (PROVIDER_STOCKFISH_ONLINE.equalsIgnoreCase(provider)) {
             return queryStockfishOnline(fen, Math.min(depth, 12));
+        } else {
+            return queryChessApi(fen, depth);
         }
-        return null;
     }
 
     private static int countPieces(String fen) {
@@ -491,8 +446,8 @@ public class ApiEngine extends Engine {
             activeConnection = conn;
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(READ_TIMEOUT_MS);
 
             int code = conn.getResponseCode();
             if (code == HttpURLConnection.HTTP_OK) {
@@ -554,8 +509,8 @@ public class ApiEngine extends Engine {
             activeConnection = conn;
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(READ_TIMEOUT_MS);
 
             int code = conn.getResponseCode();
             if (code == HttpURLConnection.HTTP_OK) {
@@ -596,14 +551,8 @@ public class ApiEngine extends Engine {
                         }
                     }
                 }
-            } else if (code == 404) {
-                // Cloud cache miss is normal/expected for non-cached positions, not an error
-                return null;
-            } else {
-                recordFailure(PROVIDER_LICHESS);
             }
         } catch (Throwable t) {
-            recordFailure(PROVIDER_LICHESS);
             Utils.logError("Lichess Cloud query error: " + t.getMessage(), t);
         } finally {
             if (conn != null) conn.disconnect();
@@ -621,8 +570,8 @@ public class ApiEngine extends Engine {
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(READ_TIMEOUT_MS);
             conn.setDoOutput(true);
 
             String targetFen = normalizeEnPassant(fen);
@@ -671,11 +620,8 @@ public class ApiEngine extends Engine {
                         return new Result(moves, score, mate, reportedDepth, false, pv, new float[]{score});
                     }
                 }
-            } else {
-                recordFailure(PROVIDER_CHESS_API);
             }
         } catch (Throwable t) {
-            recordFailure(PROVIDER_CHESS_API);
             Utils.logError("Chess-API query error: " + t.getMessage(), t);
         } finally {
             if (conn != null) conn.disconnect();
@@ -693,8 +639,8 @@ public class ApiEngine extends Engine {
             activeConnection = conn;
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(READ_TIMEOUT_MS);
 
             int code = conn.getResponseCode();
             if (code == HttpURLConnection.HTTP_OK) {
@@ -733,11 +679,8 @@ public class ApiEngine extends Engine {
                         return new Result(moves, score, mate, depth, false, pv, new float[]{score});
                     }
                 }
-            } else {
-                recordFailure(PROVIDER_STOCKFISH_ONLINE);
             }
         } catch (Throwable t) {
-            recordFailure(PROVIDER_STOCKFISH_ONLINE);
             Utils.logError("Stockfish.online query error: " + t.getMessage(), t);
         } finally {
             if (conn != null) conn.disconnect();

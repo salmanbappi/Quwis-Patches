@@ -1,3 +1,11 @@
+# [1.9.29](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.28...v1.9.29) (2026-11-17)
+
+### Bug Fixes & Resilience
+
+* **Game Review Failure Aborts:** fixed the *"Sorry. I was not able to review your game. Try again."* error during Game Review by eliminating provider quarantine lockouts, boosting read timeouts to 12s, making Lichess Cloud Eval a non-blocking opportunistic cache lookup (depth 30–75 when cached, transparent fallback on 404 cache misses), and preventing worker thread deaths in `FishnetSearch` by replacing premature `return;` exits with neutral fallback evaluations
+* **Lichess Server Review Fallback:** wrapped `LichessServerReview` in `LocalAnalysisFlow` to gracefully fall back to in-app `engineReview` if Lichess servers are unreachable or the user is not authenticated, ensuring reviews never fail to load
+* **Stockfish API Provider Reliability:** auto mode restricts ping race candidates to true on-demand engines (`chess-api.com` and `stockfish.online`) so Lichess cache checks never hijack the general evaluation engine, while EWMA latency tracking smoothly updates based on real in-flight queries
+
 # [1.9.28](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.27...v1.9.28) (2026-11-17)
 
 ### New Features
