@@ -443,10 +443,36 @@ final class LocalAnalysisFlow {
                 startBestMove = bmConstructor.newInstance(data.startBest);
             }
 
-            positions.add(apConstructor.newInstance(
-                colorWhite, null, startSuggestedMove, startBestMove, null,
-                scConstructor.newInstance(false, false)
-            ));
+            Object startPosition = null;
+            try {
+                startPosition = apConstructor.newInstance(
+                    colorWhite, null, startSuggestedMove, startBestMove, null,
+                    scConstructor.newInstance(false, false)
+                );
+            } catch (Throwable ignored) {}
+            if (startPosition == null) {
+                List<String> startPv = (data.startBest != null && !data.startLine.isEmpty())
+                    ? data.startLine
+                    : Collections.singletonList(data.startBest != null ? data.startBest : "e2e4");
+                Object[] startPmArgs = new Object[pmTypes.length];
+                for (int k = 0; k < startPmArgs.length; k++) startPmArgs[k] = AppTypes.defaultFor(pmTypes[k]);
+                startPmArgs[0] = "10";
+                startPmArgs[1] = data.startScore;
+                startPmArgs[2] = null;
+                startPmArgs[3] = data.startBest != null ? data.startBest : "e2e4";
+                startPmArgs[4] = evalValue(evalConstructor, evalIntFirst, startPv, pvCutoff(startPv));
+                startPmArgs[5] = new ArrayList<>();
+                startPmArgs[6] = null;
+                for (int k = 0; k < startPmArgs.length && k < pmTypes.length; k++) {
+                    startPmArgs[k] = coerce(pmTypes[k], startPmArgs[k]);
+                }
+                Object startPlayedMove = pmConstructor.newInstance(startPmArgs);
+                startPosition = apConstructor.newInstance(
+                    colorWhite, startPlayedMove, startSuggestedMove, startBestMove, "BOOK",
+                    scConstructor.newInstance(false, false)
+                );
+            }
+            positions.add(startPosition);
 
             for (int i = 0; i < totalMoves; i++) {
                 ReviewData.Ply ply = data.plies[i];
@@ -657,12 +683,17 @@ final class LocalAnalysisFlow {
 
             // Permissions: construct directly with all-true to avoid obfuscated companion field
             // names (the permissions object itself still comes from the real class).
-            Class<?> permissionsClass = Class.forName("com.chess.entities.GameAnalysisPermissions");
-            Class<?> quotaTypeClass = Class.forName("com.chess.entities.GameAnalysisPermissions$QuotaType");
-            Constructor<?> permConstructor = permissionsClass.getConstructor(
-                boolean.class, boolean.class, boolean.class, boolean.class, quotaTypeClass
-            );
-            Object fullPermissions = permConstructor.newInstance(true, true, true, true, null);
+            Object fullPermissions = GameReviewExtension.getFullGameAnalysisPermissions();
+            if (fullPermissions == null) {
+                try {
+                    Class<?> permissionsClass = Class.forName("com.chess.entities.GameAnalysisPermissions");
+                    Class<?> quotaTypeClass = Class.forName("com.chess.entities.GameAnalysisPermissions$QuotaType");
+                    Constructor<?> permConstructor = permissionsClass.getConstructor(
+                        boolean.class, boolean.class, boolean.class, boolean.class, quotaTypeClass
+                    );
+                    fullPermissions = permConstructor.newInstance(true, true, true, true, null);
+                } catch (Throwable ignored) {}
+            }
 
             // Emit RemoteAnalysisCompleted to trigger the review UI.
             Constructor<?> compConstructor = types.completedCtor;
@@ -676,6 +707,7 @@ final class LocalAnalysisFlow {
             Throwable cause = t instanceof java.lang.reflect.InvocationTargetException && t.getCause() != null ? t.getCause() : t;
             if (cause instanceof CancellationException) throw cause;
             Log.e(TAG, "Local stockfish analysis failed", cause);
+            Utils.toast("Flow Error: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
             // Report through the app's own Failure state so the screen shows its error UI.
             emitter.emit(types.failureCtor.newInstance(cause));
         }

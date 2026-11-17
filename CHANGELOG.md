@@ -1,3 +1,12 @@
+# [1.9.31](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.30...v1.9.31) (2026-11-17)
+
+### Bug Fixes & Resilience
+
+* **Game Review 98% Crash:** fixed *"Sorry. I was not able to review your game. Try again."* error occurring at 98% progress during Game Review across all engines (Lichess and Stockfish Cloud)
+* **Dummy Move Instantiation:** hardened `buildDummyMoveResult` in `GameReviewExtension` by safely instantiating `Score`, `AnalysisMoveClassification`, and `history` types, protecting against R8 companion field obfuscation and missing classes
+* **Kotlin Reflection Type Defaults:** enhanced `AppTypes.defaultFor` to return safe non-null defaults for boxed numbers, strings, collections, maps, sets, enums, interfaces (dynamic proxy), and constructor instantiation, preventing Kotlin `checkNotNullParameter` crashes
+* **Safe Starting Position:** provided fallback `PlayedMove` instantiation for position 0 in `LocalAnalysisFlow` and used `GameReviewExtension.getFullGameAnalysisPermissions()` with on-screen error toasts for instant diagnostics
+
 # [1.9.30](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.29...v1.9.30) (2026-11-17)
 
 ### Performance & Speed Optimizations
