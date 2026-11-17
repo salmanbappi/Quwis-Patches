@@ -308,7 +308,7 @@ final class LocalAnalysisFlow {
             if (data != null) {
                 Log.i(TAG, "Opening the saved review");
             } else {
-                if (lichess) {
+                if (lichess && GameReview.LICHESS_SERVERS.equals(GameReview.lichessMethod())) {
                     try {
                         data = LichessServerReview.review(pgn, fens, totalMoves, fraction -> {
                             emitter.ensureActive();

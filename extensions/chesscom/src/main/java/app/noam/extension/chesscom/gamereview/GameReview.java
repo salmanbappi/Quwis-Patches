@@ -196,19 +196,20 @@ public final class GameReview {
     }
 
     // How "Analyze with Lichess" works, picked on the welcome screens: Lichess's servers analyse
-    // the game for the user's Lichess account, or the game opens on Lichess's analysis board without one.
+    // the game for the user's Lichess account, or the game is reviewed directly in-app using Lichess Cloud API.
 
     public static final String LICHESS_SERVERS = "servers";
     public static final String LICHESS_BOARD = "board";
+    public static final String LICHESS_API = "api";
     private static final String LICHESS_METHOD = "lichess_review_method";
     private static final String[] METHOD_TITLES = {
-        "Lichess's servers (log in once)", "Lichess analysis board (no login)",
+        "Lichess Cloud API (no login)", "Lichess's servers (log in once)",
     };
 
     /** The method picked, or null when it has not been picked yet. */
     public static String lichessMethod() {
         SharedPreferences preferences = Features.preferences();
-        return preferences == null ? null : preferences.getString(LICHESS_METHOD, null);
+        return preferences == null ? LICHESS_API : preferences.getString(LICHESS_METHOD, LICHESS_API);
     }
 
     public static void setLichessMethod(String method) {
@@ -221,7 +222,7 @@ public final class GameReview {
         new AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Analyze with Lichess")
             .setItems(METHOD_TITLES, (shown, which) -> {
-                setLichessMethod(which == 0 ? LICHESS_SERVERS : LICHESS_BOARD);
+                setLichessMethod(which == 1 ? LICHESS_SERVERS : LICHESS_API);
                 if (next != null) next.run();
             })
             .show();

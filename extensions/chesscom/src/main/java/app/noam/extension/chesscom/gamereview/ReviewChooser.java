@@ -106,18 +106,9 @@ public final class ReviewChooser {
             .show();
     }
 
-    /** Lichess's servers review it in chess.com's screen, or it opens on Lichess's analysis board. */
+    /** Lichess API or servers review it directly in chess.com's screen without a WebView. */
     private static void lichess(Activity activity, Method method, Object first, Object second, Object third) {
-        if (GameReview.LICHESS_SERVERS.equals(GameReview.lichessMethod())) {
-            review(GameReview.Mode.LICHESS, method, first, second, third);
-            return;
-        }
-        String pgn = pgn(isReview(second) ? second : third);
-        if (pgn == null) {
-            Utils.toast("Couldn't read this game");
-            return;
-        }
-        LichessActivity.open(activity, pgn);
+        review(GameReview.Mode.LICHESS, method, first, second, third);
     }
 
     /** The game's PGN from the review direction, with clock times when chess.com has them. */
