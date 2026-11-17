@@ -64,12 +64,16 @@ public class ApiEngine extends Engine {
 
     private static final int CONNECT_TIMEOUT_MS = 8000;
     private static final int READ_TIMEOUT_MS = 12000;
+    private static final int CACHE_CONNECT_TIMEOUT_MS = 1500;
+    private static final int CACHE_READ_TIMEOUT_MS = 2000;
+    private static final int PING_TIMEOUT_MS = 3000;
 
     private static final Map<String, Long> pingTimes = new ConcurrentHashMap<>();
     private static volatile String autoWinnerProvider = null;
     private static final Object PING_LOCK = new Object();
 
     private volatile HttpURLConnection activeConnection;
+    private int consecutiveCloudMisses = 0;
 
     public interface PingCallback {
         void onComplete(String summary);
@@ -219,8 +223,8 @@ public class ApiEngine extends Engine {
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            conn.setReadTimeout(READ_TIMEOUT_MS);
+            conn.setConnectTimeout(CACHE_CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(CACHE_READ_TIMEOUT_MS);
             return conn.getResponseCode() == HttpURLConnection.HTTP_OK;
         } catch (Throwable t) {
             return false;
@@ -237,8 +241,8 @@ public class ApiEngine extends Engine {
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            conn.setReadTimeout(READ_TIMEOUT_MS);
+            conn.setConnectTimeout(PING_TIMEOUT_MS);
+            conn.setReadTimeout(PING_TIMEOUT_MS);
             conn.setDoOutput(true);
             JSONObject body = new JSONObject();
             body.put("fen", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
@@ -264,8 +268,8 @@ public class ApiEngine extends Engine {
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            conn.setReadTimeout(READ_TIMEOUT_MS);
+            conn.setConnectTimeout(PING_TIMEOUT_MS);
+            conn.setReadTimeout(PING_TIMEOUT_MS);
             return conn.getResponseCode() == HttpURLConnection.HTTP_OK;
         } catch (Throwable t) {
             return false;
@@ -296,6 +300,7 @@ public class ApiEngine extends Engine {
 
     @Override
     public void newGame() {
+        consecutiveCloudMisses = 0;
     }
 
     @Override
@@ -346,7 +351,8 @@ public class ApiEngine extends Engine {
         }
 
         // 2. Endgame Tablebase (Syzygy, <= 7 pieces)
-        if (countPieces(fen) <= 7) {
+        int pieces = countPieces(fen);
+        if (pieces <= 7) {
             Result tb = queryLichessTablebase(fen);
             if (tb != null && tb.valid()) {
                 if (progress != null) progress.onProgress(tb);
@@ -355,10 +361,16 @@ public class ApiEngine extends Engine {
         }
 
         // 3. Opportunistic Lichess Cloud Eval check (instant depth 30-75 if cached)
-        Result cloud = queryLichessCloud(fen);
-        if (cloud != null && cloud.valid()) {
-            if (progress != null) progress.onProgress(cloud);
-            return cloud;
+        // Skip cloud lookup once opening theory misses twice, unless in endgame
+        if (pieces <= 7 || consecutiveCloudMisses < 2) {
+            Result cloud = queryLichessCloud(fen);
+            if (cloud != null && cloud.valid()) {
+                consecutiveCloudMisses = 0;
+                if (progress != null) progress.onProgress(cloud);
+                return cloud;
+            } else {
+                consecutiveCloudMisses++;
+            }
         }
 
         // 4. On-demand Cloud Engines with instant fallback
@@ -446,8 +458,8 @@ public class ApiEngine extends Engine {
             activeConnection = conn;
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            conn.setReadTimeout(READ_TIMEOUT_MS);
+            conn.setConnectTimeout(CACHE_CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(CACHE_READ_TIMEOUT_MS);
 
             int code = conn.getResponseCode();
             if (code == HttpURLConnection.HTTP_OK) {
@@ -509,8 +521,8 @@ public class ApiEngine extends Engine {
             activeConnection = conn;
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            conn.setReadTimeout(READ_TIMEOUT_MS);
+            conn.setConnectTimeout(CACHE_CONNECT_TIMEOUT_MS);
+            conn.setReadTimeout(CACHE_READ_TIMEOUT_MS);
 
             int code = conn.getResponseCode();
             if (code == HttpURLConnection.HTTP_OK) {

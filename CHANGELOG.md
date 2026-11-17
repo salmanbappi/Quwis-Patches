@@ -1,3 +1,10 @@
+# [1.9.30](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.29...v1.9.30) (2026-11-17)
+
+### Performance & Speed Optimizations
+
+* **Accelerated Game Review:** sped up full game analysis by 10–15 seconds per game by introducing adaptive cache skipping (skips querying Lichess Cloud Eval for middlegame positions once opening theory misses twice, retaining Syzygy tablebase for $\le 7$ pieces)
+* **Reduced Cache Timeout Overhead:** lowered Lichess Cloud and Tablebase connect/read timeouts to 1.5s/2.0s so non-cached positions never stall, while keeping full 8s/12s budgets for `chess-api.com` on-demand calculations
+
 # [1.9.29](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.28...v1.9.29) (2026-11-17)
 
 ### Bug Fixes & Resilience
