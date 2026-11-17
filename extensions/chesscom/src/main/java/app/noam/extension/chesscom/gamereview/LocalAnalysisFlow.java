@@ -573,15 +573,32 @@ final class LocalAnalysisFlow {
             Class<?> glyphsClass = types.agd("$ReportCard$Report$Glyphs");
 
             Constructor<?> rcConstructor = rcClass.getConstructor(repClass, repClass, String.class);
-            Constructor<?> repConstructor = repClass.getConstructor(Integer.class, glyphsClass, List.class);
+            Constructor<?> repConstructor = null;
+            for (Constructor<?> candidate : repClass.getConstructors()) {
+                Class<?>[] p = candidate.getParameterTypes();
+                if (p.length == 4 && p[0] == Integer.class && p[1] == Integer.class && p[2] == glyphsClass && p[3] == List.class) {
+                    repConstructor = candidate;
+                    break;
+                }
+                if (p.length == 3 && p[0] == Integer.class && p[1] == glyphsClass && p[2] == List.class) {
+                    repConstructor = candidate;
+                    break;
+                }
+            }
+            if (repConstructor == null) repConstructor = AppTypes.primaryCtor(repClass);
             Constructor<?> glyphsConstructor = glyphsClass.getConstructor(String.class, String.class, String.class);
 
-            Object whiteReport = repConstructor.newInstance(0, glyphsConstructor.newInstance(
-                phaseGlyph(data.whitePhases[0]), phaseGlyph(data.whitePhases[1]), phaseGlyph(data.whitePhases[2])),
-                new ArrayList<>());
-            Object blackReport = repConstructor.newInstance(0, glyphsConstructor.newInstance(
-                phaseGlyph(data.blackPhases[0]), phaseGlyph(data.blackPhases[1]), phaseGlyph(data.blackPhases[2])),
-                new ArrayList<>());
+            Object whiteGlyphs = glyphsConstructor.newInstance(
+                phaseGlyph(data.whitePhases[0]), phaseGlyph(data.whitePhases[1]), phaseGlyph(data.whitePhases[2]));
+            Object blackGlyphs = glyphsConstructor.newInstance(
+                phaseGlyph(data.blackPhases[0]), phaseGlyph(data.blackPhases[1]), phaseGlyph(data.blackPhases[2]));
+
+            Object whiteReport = repConstructor.getParameterCount() == 4
+                ? repConstructor.newInstance(0, null, whiteGlyphs, new ArrayList<>())
+                : repConstructor.newInstance(0, whiteGlyphs, new ArrayList<>());
+            Object blackReport = repConstructor.getParameterCount() == 4
+                ? repConstructor.newInstance(0, null, blackGlyphs, new ArrayList<>())
+                : repConstructor.newInstance(0, blackGlyphs, new ArrayList<>());
 
             String summary = LichessMath.summary(opening != null ? opening.name : null,
                 data.whiteAccuracy, data.whiteAcpl, data.whiteMarks[0], data.whiteMarks[1], data.whiteMarks[2],

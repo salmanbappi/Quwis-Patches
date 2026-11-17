@@ -1,3 +1,9 @@
+# [1.9.32](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.31...v1.9.32) (2026-11-17)
+
+### Bug Fixes
+
+* **Chess.com 4.10.27 Game Review Support:** fixed `NoSuchMethodException` on `ReportCard$Report.<init>` by dynamically detecting and supporting both 4-parameter `ReportCard$Report.<init>(rating, performanceRating, glyphs, categories)` on 4.10.27 and 3-parameter `(rating, glyphs, categories)` on earlier versions
+
 # [1.9.31](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.30...v1.9.31) (2026-11-17)
 
 ### Bug Fixes & Resilience
