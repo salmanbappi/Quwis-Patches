@@ -1,8 +1,17 @@
-# [1.9.28](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.27...v1.9.28) (2026-11-07)
+# [1.9.28](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.27...v1.9.28) (2026-11-17)
+
+### New Features
+
+* **Chess.com 4.10.27 Support:** chess.com 4.10.27 is supported next to 4.10.23 and 4.10.18, with every patch in this bundle working on all three versions
+* **Lichess Cloud API & Syzygy Tablebase:** added `https://lichess.org/api/cloud-eval` and Syzygy 7-piece tablebase lookup to `ApiEngine` with automatic multi-provider fallback
+* **Auto Ping Race & Circuit Breaker:** auto mode pings providers on first request or manual test, locks onto the fastest responder, tracks rolling EWMA latency, and isolates degraded/rate-limited endpoints
+* **Direct Game Review:** "Analyze with Lichess" reviews games directly in-app via the API without launching WebView
 
 ### Bug Fixes
 
 * **Game Review (4.10.23):** eliminate `NullPointerException` at `GameReviewViewModel$4$stateMachine$1$12.invokeSuspend` (SourceFile:198) by setting starting position `playedMove` and `classification` to null (bypassing unplayable ply 0 move conversion), while populating all history parameters in `buildDummyMoveResult` and supplying safe non-null enum/constructor instances via `AppTypes.defaultFor` so `j0.o` handles position 0 seamlessly
+* **Lichess Puzzles:** Puzzles from Lichess opens the puzzle screen on chess.com 4.10.18 again. The button's listener keeps the activity and the navigation router in fields that are not public there, so the extension found neither and the tap ended with "Couldn't open Lichess puzzles"; they are read whatever their access now, and 4.10.23 is unchanged
+* **Game Review:** a signed-out account now reaches the reviewer chooser and can review with Stockfish on the phone or on the computer, instead of the app opening its "Sign up to use this feature." screen. Chess.com's own review and signed-in accounts are unchanged
 
 # [1.9.27](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.26...v1.9.27) (2026-11-07)
 
@@ -21,12 +30,16 @@
 ### Bug Fixes
 
 * **Game Review (4.10.23):** eliminate `NullPointerException` at `com.chess.gamereview.v2.j0.o` by aligning `AnalyzedGameData.positions` 1-to-1 with played history plies (avoiding prepended unplayed starting position with null `playedMove`), restore static register mapping (`p0, p1`), and support 4.10.23 obfuscated classification enums and `MoveConverterKt.b`
+* **Lichess Puzzles:** the session now follows the puzzle screen through Next, and backing out to the hub right after Next ends it, so a later chess.com puzzle is never taken for a Lichess one. On 4.10.23 chess.com's own guest puzzles are cleared before the first Lichess batch, so the screen no longer starts with a chess.com puzzle and its rating
+* **Lichess Puzzles:** the Classic layout's rating box and graph show the Lichess rating and a local rating history on 4.10.23, and Reset rating clears that history too. The in-game settings dialog hides the rows that do nothing in a session: Collect Puzzle Points, Always Show Rating, Show Puzzle Goals, Difficulty and Show Chat Hints
+* **Accent color:** the Puzzles tab's path background keeps chess.com's green pair instead of following the accent with only half of its checkerboard
 
 # [1.9.24](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.23...v1.9.24) (2026-11-06)
 
 ### Bug Fixes
 
 * **Game Review (4.10.23):** fixed `NullPointerException` at `com.chess.gamereview.v2.j0.o` caused by off-by-one register passing in `GameReviewV2V0JFingerprint` bytecode instructions and hardened dummy move generation against renamed history reflection classes
+* **Customize bottom bar:** the Train tab now opens Train instead of Watch. chess.com sends that route to Watch for accounts outside its own experiment, so a tap keeps the route the tab was given. Bots and Train can also be moved above the tabs that are already on before they are switched on: the settings page keeps the order of every tab, not only of the ones already shown
 
 # [1.9.23](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.22...v1.9.23) (2026-11-06)
 
@@ -36,6 +49,7 @@
 * **In-game Move Suggestions:** real-time best-move arrows are now active during live games, bot matches, daily games, and puzzles
 * **Zero 80 MB Download:** eliminated the heavy `stockfish-android-arm64-universal.tar.gz` download at patch time
 * **Unblocked Game Review:** removed fair-play check aborting post-game reviews and cleaned suggestion arrows off the Game Review screen
+* **Clone Chess.com:** the clone installs as com.chess.quwi by default instead of com.chess.noam, so it no longer carries Noam's name. The last part of the package name is now a patch option, so the clone can be given a name of your own. The rest is unchanged: it still installs next to the real Chess.com app, and leaving the patch off keeps updating your current install
 
 # [1.9.22](https://github.com/quwi26/Quwis-Patches/compare/v1.9.21...v1.9.22) (2026-11-04)
 
