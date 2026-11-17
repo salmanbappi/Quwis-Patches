@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.concurrent.CancellationException;
 
 import app.noam.extension.chesscom.Utils;
+import app.noam.extension.chesscom.stockfish.ApiEngine;
 import app.noam.extension.chesscom.stockfish.Engine;
 import app.noam.extension.chesscom.stockfish.FishnetSearch;
 
@@ -322,7 +323,7 @@ final class LocalAnalysisFlow {
                 if (data == null) {
                     try {
                         data = engineReview(startingFen, fens, playedLans, boards, historyUsable ? engineMoves : null,
-                            searchNodes, remote, lichess, progress -> {
+                            searchNodes, remote, lichess, reviewer, progress -> {
                                 emitter.ensureActive();
                                 emitter.emit(ipConstructor.newInstance(progress, progressDepth, sourceEnum));
                             });
@@ -739,7 +740,7 @@ final class LocalAnalysisFlow {
      */
     private static ReviewData engineReview(String startingFen, String[] fens, String[] playedLans, char[][] boards,
                                            List<String> engineMoves, long nodesPerMove, boolean remote,
-                                           boolean lichess, LichessServerReview.Waiting step) throws Throwable {
+                                           boolean lichess, GameReview.Mode reviewer, LichessServerReview.Waiting step) throws Throwable {
         Context context = Utils.context();
         if (context == null) throw new IOException("Stockfish could not start for the review");
         int total = playedLans.length;
@@ -747,8 +748,18 @@ final class LocalAnalysisFlow {
         // Two lines when Great moves are marked: the second-best line is how we know the move was
         // the only one that kept the position good.
         int lines = GameReview.greatMoves() ? 2 : 1;
+        ApiEngine.Strategy strategy = ApiEngine.Strategy.COMBO_SMART;
+        if (reviewer == GameReview.Mode.STOCKFISH) {
+            strategy = ApiEngine.Strategy.PURE_STOCKFISH;
+        } else if (reviewer == GameReview.Mode.COMBO_SMART) {
+            strategy = ApiEngine.Strategy.COMBO_SMART;
+        } else if (reviewer == GameReview.Mode.COMBO_DEEP) {
+            strategy = ApiEngine.Strategy.COMBO_DEEP;
+        } else if (reviewer == GameReview.Mode.LICHESS) {
+            strategy = ApiEngine.Strategy.LICHESS;
+        }
         Engine.Result[] results = FishnetSearch.search(context, startingFen, engineMoves, fens, nodesPerMove,
-            lines, engines, remote, step::progress);
+            lines, engines, remote, strategy, step::progress);
 
         ReviewData data = new ReviewData();
         int[] depths = new int[total + 1];

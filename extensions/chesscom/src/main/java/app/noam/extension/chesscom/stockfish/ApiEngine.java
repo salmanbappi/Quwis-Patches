@@ -73,14 +73,27 @@ public class ApiEngine extends Engine {
     private static final Object PING_LOCK = new Object();
 
     private volatile HttpURLConnection activeConnection;
-    private int consecutiveCloudMisses = 0;
+
+    public enum Strategy {
+        PURE_STOCKFISH,
+        COMBO_SMART,
+        COMBO_DEEP,
+        LICHESS
+    }
+
+    private final Strategy strategy;
+
+    public ApiEngine() {
+        this(null);
+    }
+
+    public ApiEngine(Strategy strategy) {
+        super(1, 16);
+        this.strategy = strategy;
+    }
 
     public interface PingCallback {
         void onComplete(String summary);
-    }
-
-    public ApiEngine() {
-        super(1, 16);
     }
 
     public static String getProvider() {
@@ -300,7 +313,18 @@ public class ApiEngine extends Engine {
 
     @Override
     public void newGame() {
-        consecutiveCloudMisses = 0;
+    }
+
+    private Strategy resolveStrategy() {
+        if (this.strategy != null) return this.strategy;
+        String setting = getProvider();
+        if (PROVIDER_LICHESS.equalsIgnoreCase(setting)) {
+            return Strategy.LICHESS;
+        } else if (PROVIDER_CHESS_API.equalsIgnoreCase(setting) || PROVIDER_STOCKFISH_ONLINE.equalsIgnoreCase(setting)) {
+            return Strategy.PURE_STOCKFISH;
+        } else {
+            return Strategy.COMBO_SMART;
+        }
     }
 
     @Override
@@ -350,8 +374,17 @@ public class ApiEngine extends Engine {
             return finished;
         }
 
-        // 2. Endgame Tablebase (Syzygy, <= 7 pieces)
+        Strategy strat = resolveStrategy();
+
+        // PURE_STOCKFISH: Directly compute with pure Stockfish engine (chess-api.com / stockfish.online)
+        // Zero Lichess / Tablebase calls.
+        if (strat == Strategy.PURE_STOCKFISH) {
+            return queryEngineFallback(fen, depth, progress);
+        }
+
         int pieces = countPieces(fen);
+
+        // Endgame Tablebase (Syzygy, <= 7 pieces) for COMBO_SMART, COMBO_DEEP, and LICHESS
         if (pieces <= 7) {
             Result tb = queryLichessTablebase(fen);
             if (tb != null && tb.valid()) {
@@ -360,20 +393,49 @@ public class ApiEngine extends Engine {
             }
         }
 
-        // 3. Opportunistic Lichess Cloud Eval check (instant depth 30-75 if cached)
-        // Skip cloud lookup once opening theory misses twice, unless in endgame
-        if (pieces <= 7 || consecutiveCloudMisses < 2) {
-            Result cloud = queryLichessCloud(fen);
-            if (cloud != null && cloud.valid()) {
-                consecutiveCloudMisses = 0;
-                if (progress != null) progress.onProgress(cloud);
-                return cloud;
-            } else {
-                consecutiveCloudMisses++;
+        // COMBO_SMART:
+        // Opening theory (pieces > 20): check Lichess Cloud cache.
+        // Opening theory is almost always cached (instant depth 30-75 in ~150ms).
+        // Middlegame (8..20 pieces): skip Lichess cache check completely!
+        // Middlegame positions are novel, so checking Lichess would waste 404 latency.
+        if (strat == Strategy.COMBO_SMART) {
+            if (pieces > 20) {
+                Result cloud = queryLichessCloud(fen, CACHE_CONNECT_TIMEOUT_MS, CACHE_READ_TIMEOUT_MS);
+                if (cloud != null && cloud.valid()) {
+                    if (progress != null) progress.onProgress(cloud);
+                    return cloud;
+                }
             }
+            return queryEngineFallback(fen, depth, progress);
         }
 
-        // 4. On-demand Cloud Engines with instant fallback
+        // COMBO_DEEP:
+        // Speculatively check Lichess Cloud cache for every move (including middlegame master positions)
+        // with an aggressive short timeout (350ms connect, 400ms read) so misses fail fast without stalling.
+        if (strat == Strategy.COMBO_DEEP) {
+            Result cloud = queryLichessCloud(fen, 350, 400);
+            if (cloud != null && cloud.valid()) {
+                if (progress != null) progress.onProgress(cloud);
+                return cloud;
+            }
+            return queryEngineFallback(fen, depth, progress);
+        }
+
+        // LICHESS:
+        // Standard Lichess Cloud check with fallback to engine compute
+        if (strat == Strategy.LICHESS) {
+            Result cloud = queryLichessCloud(fen, CACHE_CONNECT_TIMEOUT_MS, CACHE_READ_TIMEOUT_MS);
+            if (cloud != null && cloud.valid()) {
+                if (progress != null) progress.onProgress(cloud);
+                return cloud;
+            }
+            return queryEngineFallback(fen, depth, progress);
+        }
+
+        return queryEngineFallback(fen, depth, progress);
+    }
+
+    private Result queryEngineFallback(String fen, int depth, Progress progress) {
         List<String> order = getProviderOrder();
         for (String p : order) {
             long start = System.currentTimeMillis();
@@ -385,7 +447,6 @@ public class ApiEngine extends Engine {
                 return res;
             }
         }
-
         return empty();
     }
 
@@ -513,6 +574,10 @@ public class ApiEngine extends Engine {
     }
 
     private Result queryLichessCloud(String fen) {
+        return queryLichessCloud(fen, CACHE_CONNECT_TIMEOUT_MS, CACHE_READ_TIMEOUT_MS);
+    }
+
+    private Result queryLichessCloud(String fen, int connectTimeoutMs, int readTimeoutMs) {
         HttpURLConnection conn = null;
         try {
             String encodedFen = URLEncoder.encode(fen, "UTF-8");
@@ -521,8 +586,8 @@ public class ApiEngine extends Engine {
             activeConnection = conn;
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Chess)");
-            conn.setConnectTimeout(CACHE_CONNECT_TIMEOUT_MS);
-            conn.setReadTimeout(CACHE_READ_TIMEOUT_MS);
+            conn.setConnectTimeout(connectTimeoutMs);
+            conn.setReadTimeout(readTimeoutMs);
 
             int code = conn.getResponseCode();
             if (code == HttpURLConnection.HTTP_OK) {

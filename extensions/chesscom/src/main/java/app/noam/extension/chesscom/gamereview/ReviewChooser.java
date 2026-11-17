@@ -27,7 +27,11 @@ public final class ReviewChooser {
     private static GameReview.Mode[] modes() {
         List<GameReview.Mode> modes = new ArrayList<>();
         modes.add(GameReview.Mode.CHESSCOM);
-        if (Features.stockfishPatched()) modes.add(GameReview.Mode.STOCKFISH);
+        if (Features.stockfishPatched()) {
+            modes.add(GameReview.Mode.STOCKFISH);
+            modes.add(GameReview.Mode.COMBO_SMART);
+            modes.add(GameReview.Mode.COMBO_DEEP);
+        }
         if (GameReview.computerReview()) modes.add(GameReview.Mode.LAPTOP);
         modes.add(GameReview.Mode.LICHESS);
         return modes.toArray(new GameReview.Mode[0]);
@@ -36,7 +40,9 @@ public final class ReviewChooser {
     private static String title(GameReview.Mode mode) {
         switch (mode) {
             case CHESSCOM: return "Review on chess.com";
-            case STOCKFISH: return "Stockfish AI (Cloud API)";
+            case STOCKFISH: return "Stockfish Cloud (Pure Engine)";
+            case COMBO_SMART: return "Combo: Smart Book & Endgame (Fastest)";
+            case COMBO_DEEP: return "Combo: Deep Cache (Every Move)";
             case LAPTOP: return "Stockfish on your computer";
             default: return "Analyze with Lichess";
         }

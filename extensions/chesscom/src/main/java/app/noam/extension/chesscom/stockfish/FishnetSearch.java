@@ -45,6 +45,13 @@ public final class FishnetSearch {
     public static Engine.Result[] search(Context context, String startFen, List<String> moves, String[] fens,
                                          long nodesPerMove, int lines, int engines, boolean remote, Progress progress)
         throws Throwable {
+        return search(context, startFen, moves, fens, nodesPerMove, lines, engines, remote, ApiEngine.Strategy.COMBO_SMART, progress);
+    }
+
+    public static Engine.Result[] search(Context context, String startFen, List<String> moves, String[] fens,
+                                         long nodesPerMove, int lines, int engines, boolean remote,
+                                         ApiEngine.Strategy strategy, Progress progress)
+        throws Throwable {
         // fishnet's NodeLimit.get spreads the budget over the repeated positions too.
         long nodes = nodesPerMove * CHUNK / (CHUNK + 1);
         int last = fens.length - 1;
@@ -67,7 +74,7 @@ public final class FishnetSearch {
         Thread[] workers = new Thread[Math.max(1, Math.min(engines, chunks.size()))];
         for (int w = 0; w < workers.length; w++) {
             workers[w] = new Thread(() -> {
-                Engine engine = remote ? new NetEngine() : new ApiEngine();
+                Engine engine = remote ? new NetEngine() : new ApiEngine(strategy);
                 running.add(engine);
                 try {
                     if (!engine.start(context)) return;

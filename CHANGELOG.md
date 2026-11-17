@@ -1,3 +1,13 @@
+# [1.9.33](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.32...v1.9.33) (2026-11-18)
+
+### Features & Performance Optimizations
+
+* **Separate Pure Stockfish Cloud & Lichess:** separated "Stockfish Cloud (Pure Engine)" to run 100% pure Stockfish compute without Lichess or Tablebase calls, keeping settings provider switches dedicated for in-game compute
+* **Dual High-Speed Combo Modes in Game Review:**
+  * **Combo: Smart Book & Endgame (Fastest):** selectively queries Lichess Cloud Eval only for opening theory (`pieces > 20`), Syzygy Tablebase for endgame (`pieces <= 7`), and goes directly to Stockfish Cloud compute for middlegame ($8..20$ pieces) to prevent wasting latency on 404 cache misses
+  * **Combo: Deep Cache (Every Move):** speculatively checks Lichess Cloud cache for every single ply with a rapid fail-fast 350ms timeout, falling back immediately to Stockfish Cloud compute
+* **Fixed 80% Analysis Freeze:** resolved sudden slowdown occurring at 80% progress caused by backwards chunk evaluation falsely triggering instance-level cloud miss lockout during opening theory evaluation
+
 # [1.9.32](https://github.com/salmanbappi/Quwis-Patches/compare/v1.9.31...v1.9.32) (2026-11-17)
 
 ### Bug Fixes

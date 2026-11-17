@@ -42,7 +42,7 @@ public final class GameReview {
     private GameReview() {}
 
     /** Who reviews the next game, picked in the review chooser. */
-    enum Mode { CHESSCOM, STOCKFISH, LAPTOP, LICHESS }
+    public enum Mode { CHESSCOM, STOCKFISH, COMBO_SMART, COMBO_DEEP, LAPTOP, LICHESS }
 
     private static final String REVIEW_SCREEN = "com.chess.gamereview.v2.GameReviewActivity";
 
@@ -74,7 +74,7 @@ public final class GameReview {
 
     /** Local Stockfish needs the engine, which comes with Stockfish analysis; without it chess.com reviews. */
     private static Mode usable(Mode chosen) {
-        if (chosen == Mode.STOCKFISH && !Features.stockfishPatched()) return Mode.CHESSCOM;
+        if ((chosen == Mode.STOCKFISH || chosen == Mode.COMBO_SMART || chosen == Mode.COMBO_DEEP) && !Features.stockfishPatched()) return Mode.CHESSCOM;
         // Stockfish on the computer needs its own patch, not the phone's engine: the search runs there.
         if (chosen == Mode.LAPTOP && !computerReview()) return Mode.CHESSCOM;
         return chosen;
